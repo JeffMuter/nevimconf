@@ -605,18 +605,27 @@ require('lazy').setup({
       --  - settings (table): Override the default settings passed when initializing the server.
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
       local servers = {
-        -- clangd = {},
-        -- gopls = {},
-        -- pyright = {},
-        -- rust_analyzer = {},
+        gopls = {
+          analyses = {
+            unusedparams = true,
+          },
+          staticcheck = true,
+          experimentalPostfixCompletions = true,
+        },
+        quick_lint_js = {},
+        sqls = {
+          on_attach = function(client)
+            client.server_capabilities.documentFormattingProvider = false
+            client.server_capabilities.documentRangeFormattingProvider = false
+          end,
+        },
+        html = {},
         -- ... etc. See `:help lspconfig-all` for a list of all the pre-configured LSPs
         --
         -- Some languages (like typescript) have entire language plugins that can be useful:
         --    https://github.com/pmizio/typescript-tools.nvim
         --
         -- But for many setups, the LSP (`ts_ls`) will work just fine
-        -- ts_ls = {},
-        --
 
         lua_ls = {
           -- cmd = {...},
@@ -634,6 +643,15 @@ require('lazy').setup({
         },
       }
 
+      vim.api.nvim_create_autocmd('BufWritePre', {
+        pattern = '*.go',
+        callback = function()
+          vim.lsp.buf.code_action {
+            context = { only = { 'source.organizeImports' } },
+            apply = true,
+          }
+        end,
+      })
       -- Ensure the servers and tools above are installed
       --  To check the current status of installed tools and/or manually install
       --  other tools, you can run
@@ -647,6 +665,11 @@ require('lazy').setup({
       local ensure_installed = vim.tbl_keys(servers or {})
       vim.list_extend(ensure_installed, {
         'stylua', -- Used to format Lua code
+        'gopls',
+        'cssls',
+        'quick_lint_js',
+        'sqls',
+        'bashls',
       })
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
@@ -699,11 +722,50 @@ require('lazy').setup({
       end,
       formatters_by_ft = {
         lua = { 'stylua' },
+        sql = { 'sqlfluff' },
         -- Conform can also run multiple formatters sequentially
         -- python = { "isort", "black" },
         --
         -- You can use 'stop_after_first' to run the first available formatter from the list
         -- javascript = { "prettierd", "prettier", stop_after_first = true },
+      },
+    },
+  },
+
+  {
+    'folke/trouble.nvim',
+    opts = {}, -- for default options, refer to the configuration section for custom setup.
+    cmd = 'Trouble',
+    keys = {
+      {
+        '<leader>xx',
+        '<cmd>Trouble diagnostics toggle<cr>',
+        desc = 'Diagnostics (Trouble)',
+      },
+      {
+        '<leader>xX',
+        '<cmd>Trouble diagnostics toggle filter.buf=0<cr>',
+        desc = 'Buffer Diagnostics (Trouble)',
+      },
+      {
+        '<leader>cs',
+        '<cmd>Trouble symbols toggle focus=false<cr>',
+        desc = 'Symbols (Trouble)',
+      },
+      {
+        '<leader>cl',
+        '<cmd>Trouble lsp toggle focus=false win.position=right<cr>',
+        desc = 'LSP Definitions / references / ... (Trouble)',
+      },
+      {
+        '<leader>xL',
+        '<cmd>Trouble loclist toggle<cr>',
+        desc = 'Location List (Trouble)',
+      },
+      {
+        '<leader>xQ',
+        '<cmd>Trouble qflist toggle<cr>',
+        desc = 'Quickfix List (Trouble)',
       },
     },
   },
@@ -750,6 +812,7 @@ require('lazy').setup({
       local luasnip = require 'luasnip'
       luasnip.config.setup {}
 
+      require('luasnip.loaders.from_lua').load { paths = '~/.config/nvim/lua/snippets/' }
       cmp.setup {
         snippet = {
           expand = function(args)
@@ -824,21 +887,40 @@ require('lazy').setup({
     end,
   },
 
-  { -- You can easily change to a different colorscheme.
-    -- Change the name of the colorscheme plugin below, and then
-    -- change the command in the config to whatever the name of that colorscheme is.
-    --
-    -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
-    'folke/tokyonight.nvim',
-    priority = 1000, -- Make sure to load this before all the other start plugins.
-    init = function()
-      -- Load the colorscheme here.
-      -- Like many other themes, this one has different styles, and you could load
-      -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
-      vim.cmd.colorscheme 'tokyonight-night'
+  -- You can easily change to a different colorscheme.
+  -- Change the name of the colorscheme plugin below, and then
+  -- change the command in the config to whatever the name of that colorscheme is.
+  --
+  -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
+  -- 'folke/tokyonight.nvim',
+  -- priority = 1000, -- Make sure to load this before all the other start plugins.
+  -- init = function()
+  -- Load the colorscheme here.
+  -- Like many other themes, this one has different styles, and you could load
+  -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
+  -- vim.cmd.colorscheme 'tokyonight-night'
 
-      -- You can configure highlights by doing something like:
-      vim.cmd.hi 'Comment gui=none'
+  -- You can configure highlights by doing something like:
+  -- vim.cmd.hi 'Comment gui=none'
+  -- end,
+  {
+    'folke/tokyonight.nvim', -- You can remove this line if you don't want to keep tokyonight
+    enabled = false, -- Disable tokyonight
+  },
+
+  {
+    -- Polar theme
+    dir = vim.fn.stdpath 'config' .. '/lua/polar',
+    name = 'polar',
+    priority = 1000,
+    config = function()
+      -- Load and setup the theme
+      local ok, theme = pcall(require, 'polar')
+      if not ok then
+        vim.notify('Could not load polar theme: ' .. theme, vim.log.levels.ERROR)
+        return
+      end
+      theme.load() -- Call the load function we defined in init.lua
     end,
   },
 
@@ -882,6 +964,22 @@ require('lazy').setup({
       --  Check out: https://github.com/echasnovski/mini.nvim
     end,
   },
+
+  { -- Autoclose brackets, quotes, etc.
+    'm4xshen/autoclose.nvim',
+    event = 'InsertEnter',
+    opts = {
+      keys = {
+        ['('] = { escape = false, close = true, pair = '()' },
+        ['['] = { escape = false, close = true, pair = '[]' },
+        ['{'] = { escape = false, close = true, pair = '{}' },
+        ['"'] = { escape = true, close = true, pair = '""' },
+        ["'"] = { escape = true, close = true, pair = "''" },
+        ['`'] = { escape = true, close = true, pair = '``' },
+      },
+    },
+  },
+
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
     build = ':TSUpdate',
@@ -907,7 +1005,58 @@ require('lazy').setup({
     --    - Show your current context: https://github.com/nvim-treesitter/nvim-treesitter-context
     --    - Treesitter + textobjects: https://github.com/nvim-treesitter/nvim-treesitter-textobjects
   },
+  {
+    'tpope/vim-dadbod',
+    dependencies = {
+      'kristijanhusak/vim-dadbod-ui',
+      'kristijanhusak/vim-dadbod-completion',
+    },
+    opt = true,
+    config = function()
+      -- Basic settings
+      vim.g.db_ui_save_location = vim.fn.stdpath 'data' .. '/db_ui'
 
+      vim.g.dbs = {
+        pact_sqlite3 = 'sqlite:/home/x12/repos/pact/database/database.db',
+      }
+
+      -- Optional: Set up key mappings
+      vim.keymap.set('n', '<leader>db', '<Cmd>DBUIToggle<CR>', { desc = 'Toggle DB UI' })
+      vim.keymap.set('n', '<leader>df', '<Cmd>DBUIFindBuffer<CR>', { desc = 'Find DB buffer' })
+      vim.keymap.set('n', '<leader>dr', '<Cmd>DBUIRenameBuffer<CR>', { desc = 'Rename DB buffer' })
+      vim.keymap.set('n', '<leader>dl', '<Cmd>DBUILastQueryInfo<CR>', { desc = 'Show last query' })
+
+      -- Set up completion for SQL files
+      vim.api.nvim_create_autocmd('FileType', {
+        pattern = { 'sql', 'mysql', 'plsql', 'sqlite' },
+        callback = function()
+          require('cmp').setup.buffer {
+            sources = {
+              { name = 'vim-dadbod-completion' },
+              -- other sources...
+            },
+          }
+        end,
+      })
+    end,
+  },
+  {
+    'kristijanhusak/vim-dadbod-ui',
+    dependencies = {
+      { 'tpope/vim-dadbod', lazy = true },
+      { 'kristijanhusak/vim-dadbod-completion', ft = { 'sql', 'mysql', 'plsql' }, lazy = true }, -- Optional
+    },
+    cmd = {
+      'DBUI',
+      'DBUIToggle',
+      'DBUIAddConnection',
+      'DBUIFindBuffer',
+    },
+    init = function()
+      -- Your DBUI configuration
+      vim.g.db_ui_use_nerd_fonts = 1
+    end,
+  },
   -- The following two comments only work if you have downloaded the kickstart repo, not just copy pasted the
   -- init.lua. If you want these files, they are in the repository, so you can just download them and
   -- place them in the correct locations.
